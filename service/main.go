@@ -94,8 +94,8 @@ func saveToES(p Post, id string) {
   // Create a client
   es_client, err := elastic.NewClient(elastic.SetURL(ES_URL), elastic.SetSniff(false))
   if err != nil {
-  panic(err)
-  return
+    panic(err)
+    return
   }
 
   // Save it to index
@@ -107,8 +107,8 @@ func saveToES(p Post, id string) {
   Refresh(true).
   Do()
   if err != nil {
-  panic(err)
-  return
+    panic(err)
+    return
   }
 
   fmt.Printf("Post is saved to Index: %s\n", p.Message)
