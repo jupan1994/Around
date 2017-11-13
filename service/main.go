@@ -8,7 +8,7 @@ import (
   "log"
   "strconv"
   "reflect"
-  //"github.com/pborman/uuid"
+  "github.com/pborman/uuid"
 )
 
 type Location struct {
@@ -31,7 +31,7 @@ const (
   PROJECT_ID = "around-185721"
   BT_INSTANCE = "around-post"
   // Needs to update this URL if you deploy it to cloud.
-  ES_URL = "http://35.185.99.144:9200"
+  ES_URL = "http://104.196.39.197:9200"
 )
 
 
@@ -85,12 +85,13 @@ func handlerPost(w http.ResponseWriter, r *http.Request) {
     return
   }
 
+  id := uuid.New()
   // Save to ES.
-  saveToES(p, PROJECT_ID)
+  saveToES(&p, id)
 }
 
 // Save a post to ElasticSearch
-func saveToES(p Post, id string) {
+func saveToES(p *Post, id string) {
   // Create a client
   es_client, err := elastic.NewClient(elastic.SetURL(ES_URL), elastic.SetSniff(false))
   if err != nil {
