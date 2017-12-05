@@ -2,10 +2,12 @@
   <library name="GOPATH &lt;service&gt;">
     <CLASSES>
       <root url="file://$USER_HOME$/go/src/gopkg.in" />
+      <root url="file://$USER_HOME$/go/src/github.com" />
     </CLASSES>
     <JAVADOC />
     <SOURCES>
       <root url="file://$USER_HOME$/go/src/gopkg.in" />
+      <root url="file://$USER_HOME$/go/src/github.com" />
     </SOURCES>
     <excluded>
       <root url="file://$PROJECT_DIR$" />
