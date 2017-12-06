@@ -9,6 +9,9 @@ import (
   "strconv"
   "reflect"
   "github.com/pborman/uuid"
+  "strings"
+  "context"
+  "cloud.google.com/go/bigtable"
 )
 
 type Location struct {
@@ -88,6 +91,32 @@ func handlerPost(w http.ResponseWriter, r *http.Request) {
   id := uuid.New()
   // Save to ES.
   saveToES(&p, id)
+
+  fmt.Printf( "Post is saved to Index: %s\n", p.Message)
+
+  ctx := context.Background()
+  // you must update project name here
+  bt_client, err := bigtable.NewClient(ctx, PROJECT_ID, BT_INSTANCE)
+  if err != nil {
+    panic(err)
+    return
+  }
+
+  tbl := bt_client.Open("post")
+  mut := bigtable.NewMutation()
+  t := bigtable.Now()
+
+  mut.Set("post", "user", t, []byte(p.User))
+  mut.Set("post", "message", t, []byte(p.Message))
+  mut.Set("location", "lat", t, []byte(strconv.FormatFloat(p.Location.Lat, 'f', -1, 64)))
+  mut.Set("location", "lon", t, []byte(strconv.FormatFloat(p.Location.Lon, 'f', -1, 64)))
+
+  err = tbl.Apply(ctx, id, mut)
+  if err != nil {
+    panic(err)
+    return
+  }
+  fmt.Printf("Post is saved to BigTable: %s\n", p.Message)
 }
 
 // Save a post to ElasticSearch
@@ -165,8 +194,10 @@ func handlerSearch(w http.ResponseWriter, r *http.Request) {
     p := item.(Post) // Cast an item to Post, equals to p = (Post) item in java
     fmt.Printf("Post by %s: %s at lat %v and lon %v\n", p.User, p.Message, p.Location.Lat, p.Location.Lon)
     // TODO(student homework): Perform filtering based on keywords such as web spam etc.
-    ps = append(ps, p)  // Add the p to an array, equals ps.add(p) in java
-
+    if !containsFilteredWords(&p.Message) {
+      ps = append(ps, p)
+    }
+    //ps = append(ps, p)  // Add the p to an array, equals ps.add(p) in java
   }
   js, err := json.Marshal(ps) // Convert the go object to a string
   if err != nil {
@@ -178,4 +209,18 @@ func handlerSearch(w http.ResponseWriter, r *http.Request) {
   w.Header().Set("Access-Control-Allow-Origin", "*")  // Allow cross domain visit for javascript.
   w.Write(js)
 }
+
+func containsFilteredWords(s *string) bool {
+  filteredWords := []string{
+    "fuck",
+    "100",
+  }
+  for _, word := range filteredWords {
+    if strings.Contains(*s, word) {
+      return true
+    }
+  }
+  return false
+}
+
 
