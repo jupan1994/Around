@@ -32,6 +32,7 @@ class AroundMap extends React.Component {
         ref={this.getMapRef}
         defaultZoom={11}
         defaultCenter={{ lat: pos.lat, lng: pos.lon }}
+        defaultOptions={{ scaleControl: true }}
       >
         {this.props.posts ? this.props.posts.map((post, index) =>
           <AroundMarker
