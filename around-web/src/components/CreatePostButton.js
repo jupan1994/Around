@@ -2,7 +2,7 @@ import React from 'react';
 import $ from 'jquery';
 import { Modal, Button, message } from 'antd';
 import { WrappedCreatePostForm } from './CreatePostForm';
-import { API_ROOT, TOKEN_KEY, AUTH_PREFIX, POS_KEY } from '../Constants';
+import { API_ROOT, TOKEN_KEY, AUTH_PREFIX, POS_KEY, LOC_SHAKE } from '../Constants';
 import { PropTypes } from 'prop-types';
 
 export class CreatePostButton extends React.Component {
@@ -30,8 +30,8 @@ export class CreatePostButton extends React.Component {
       // prepare formData
       const { lat, lon } = JSON.parse(localStorage.getItem(POS_KEY));
       const formData = new FormData();
-      formData.set('lat', lat + Math.random() * 0.05 - 0.1);
-      formData.set('lon', lon + Math.random() * 0.05 - 0.1);
+      formData.set('lat', lat + Math.random() * LOC_SHAKE - LOC_SHAKE);
+      formData.set('lon', lon + Math.random() * LOC_SHAKE - LOC_SHAKE);
       formData.set('message', form.getFieldValue('message'));
       formData.set('image', form.getFieldValue('image')[0]);
       // send request

@@ -7,3 +7,4 @@ export const GEO_OPTIONS = {
   timeout: 27000,
 };
 export const AUTH_PREFIX = 'Bearer';
+export const LOC_SHAKE = 0.02;

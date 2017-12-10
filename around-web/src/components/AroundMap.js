@@ -5,11 +5,20 @@ import { AroundMarker } from "./AroundMarker";
 
 
 class AroundMap extends React.Component {
-  onDragEnd = () => {
+  reLoadMarkers = () => {
     const center = this.map.getCenter();
     const position = { lat: center.lat(), lon: center.lng() };
-    localStorage.setItem(POS_KEY, JSON.stringify(position));
-    this.props.loadNearbyPosts();
+    this.props.loadNearbyPosts(position, this.getRange());
+  }
+  getRange = () => {
+    const google = window.google;
+    const center = this.map.getCenter();
+    const bounds = this.map.getBounds();
+    if (center && bounds) {
+      const ne = bounds.getNorthEast();
+      const right = new google.maps.LatLng(center.lat(), ne.lng());
+      return 0.000621371192 * google.maps.geometry.spherical.computeDistanceBetween(center, right);
+    }
   }
   getMapRef = (map) => {
     this.map = map;
@@ -18,7 +27,8 @@ class AroundMap extends React.Component {
     const pos = JSON.parse(localStorage.getItem(POS_KEY));
     return (
       <GoogleMap
-        onDragEnd={this.onDragEnd}
+        onDragEnd={this.reLoadMarkers}
+        onZoomChanged={this.reLoadMarkers}
         ref={this.getMapRef}
         defaultZoom={11}
         defaultCenter={{ lat: pos.lat, lng: pos.lon }}
