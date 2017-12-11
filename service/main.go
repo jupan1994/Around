@@ -37,7 +37,7 @@ const (
   INDEX       = "around"
   TYPE        = "post"
   DISTANCE    = "200km"
-  //PROJECT_ID  = "around-179500"
+  PROJECT_ID  = "around-179500"
   BT_INSTANCE = "around-post"
   // Needs to update this URL if you deploy it to cloud.
   ES_URL = "http://35.225.55.154:9200"
@@ -262,7 +262,7 @@ func handlerPost(w http.ResponseWriter, r *http.Request) {
   ctx := context.Background()
 
   defer file.Close()
-  _, attrs, err := saveToGCS(ctx, file, GCS_BUCKET, id)
+  _, attrs, err := saveToGCS(ctx, file, BUCKET_NAME, id)
   if err != nil {
     http.Error(w, "GCS is not setup", http.StatusInternalServerError)
     fmt.Printf("GCS is not setup %v\n", err)
@@ -341,7 +341,7 @@ func saveToES(p *Post, id string) {
 // Save a post to BigTable
 func saveToBigTable(p *Post, id string) {
   ctx := context.Background()
-  bt_client, err := bigtable.NewClient(ctx, BIGTABLE_PROJECT_ID, BT_INSTANCE)
+  bt_client, err := bigtable.NewClient(ctx, PROJECT_ID, BT_INSTANCE)
   if err != nil {
     panic(err)
     return
