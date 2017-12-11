@@ -106,9 +106,14 @@ func main() {
 
 func handlerSearch(w http.ResponseWriter, r *http.Request) {
   fmt.Println("Received one request for search")
+
   w.Header().Set("Access-Control-Allow-Origin", "*")
   w.Header().Set("Content-Type", "application/json")
   w.Header().Set("Access-Control-Allow-Headers", "Content-Type,Authorization")
+
+  if r.Method != "GET" {
+    return
+  }
 
   lat, _ := strconv.ParseFloat(r.URL.Query().Get("lat"), 64)
   lon, _ := strconv.ParseFloat(r.URL.Query().Get("lon"), 64)
@@ -140,7 +145,8 @@ func handlerSearch(w http.ResponseWriter, r *http.Request) {
   // Create a client using Elasticsearch
   client, err := elastic.NewClient(elastic.SetURL(ES_URL), elastic.SetSniff(false))
   if err != nil {
-    panic(err)
+    http.Error(w, "ES is not setup", http.StatusInternalServerError)
+    fmt.Printf("ES is not setup %v\n", err)
     return
   }
 
@@ -157,7 +163,9 @@ func handlerSearch(w http.ResponseWriter, r *http.Request) {
       Do()
   if err != nil {
     // Handle error
-    panic(err)
+    m := fmt.Sprintf("Failed to search ES %v", err)
+    fmt.Println(m)
+    http.Error(w, m, http.StatusInternalServerError)
   }
 
   // searchResult is of type SearchResult and returns hits, suggestions,
@@ -180,7 +188,9 @@ func handlerSearch(w http.ResponseWriter, r *http.Request) {
   }
   js, err := json.Marshal(ps)
   if err != nil {
-    panic(err)
+    m := fmt.Sprintf("Failed to parse post object %v", err)
+    fmt.Println(m)
+    http.Error(w, m, http.StatusInternalServerError)
     return
   }
 
@@ -193,7 +203,7 @@ func handlerSearch(w http.ResponseWriter, r *http.Request) {
     })
 
     // Set the cache expiration to be 30 seconds
-    err := rs_client.Set(key, string(js), time.Second*30).Err()
+    err := rs_client.Set(key, string(js), time.Second*10).Err()
     if err != nil {
       fmt.Printf("Redis cannot save the key %s as %v.\n", key, err)
     }
@@ -208,7 +218,17 @@ func handlerPost(w http.ResponseWriter, r *http.Request) {
   w.Header().Set("Access-Control-Allow-Origin", "*")
   w.Header().Set("Access-Control-Allow-Headers", "Content-Type,Authorization")
 
+  if r.Method != "POST" {
+    return
+  }
+
   user := r.Context().Value("user")
+  if user == nil {
+    m := fmt.Sprintf("Unable to find user in context")
+    fmt.Println(m)
+    http.Error(w, m, http.StatusBadRequest)
+    return
+  }
   claims := user.(*jwt.Token).Claims
   username := claims.(jwt.MapClaims)["username"]
 
@@ -254,7 +274,7 @@ func handlerPost(w http.ResponseWriter, r *http.Request) {
   p.Url = attrs.MediaLink
 
   // Save to ES.
-  saveToES(p, id)
+  go saveToES(p, id)
 
   // Save to BigTable.
   //saveToBigTable(p, id)
