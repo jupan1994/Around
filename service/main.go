@@ -8,7 +8,7 @@ import (
   "encoding/json"
   "strconv"
   "log"
-  //"cloud.google.com/go/bigtable"
+  "cloud.google.com/go/bigtable"
   "github.com/pborman/uuid"
   "context"
   "cloud.google.com/go/storage"
@@ -18,6 +18,7 @@ import (
   "github.com/gorilla/mux"
   "github.com/go-redis/redis"
   "time"
+  "os"
 )
 
 type Location struct {
@@ -37,16 +38,21 @@ const (
   TYPE        = "post"
   DISTANCE    = "200km"
   //PROJECT_ID  = "around-179500"
-  //BT_INSTANCE = "around-post"
+  BT_INSTANCE = "around-post"
   // Needs to update this URL if you deploy it to cloud.
   ES_URL = "http://35.225.55.154:9200"
   // Needs to update this bucket based on your gcs bucket name.
   BUCKET_NAME = "post-images-185721"
   ENABLE_MEMCACHE = true
+  ENABLE_BIGTABLE = false
   REDIS_URL = "redis-16973.c1.us-central1-2.gce.cloud.redislabs.com:16973"
 )
 
-var mySigningKey = []byte("secret")
+var (
+  mySigningKey        = []byte("secret")
+  BIGTABLE_PROJECT_ID = os.Getenv("BIG_TABLE_PROJECT_ID")
+  GCS_BUCKET          = os.Getenv("GCS_BUCKET")
+)
 
 func main() {
   // Create a client
@@ -55,6 +61,7 @@ func main() {
     panic(err)
     return
   }
+
   // Use the IndexExists service to check if a specified index exists.
   exists, err := client.IndexExists(INDEX).Do()
   if err != nil {
@@ -63,29 +70,25 @@ func main() {
   if !exists {
     // Create a new index.
     mapping := `{
-                        "mappings":{
-                                "post":{
-                                        "properties":{
-                                                "location":{
-                                                        "type":"geo_point"
-                                                }
-                                        }
-                                }
-                        }
-                }
-                `
+			"mappings":{
+				"post":{
+					"properties":{
+						"location":{
+							"type":"geo_point"
+						}
+					}
+				}
+			}
+		}
+		`
     _, err := client.CreateIndex(INDEX).Body(mapping).Do()
     if err != nil {
       // Handle error
       panic(err)
     }
   }
-  fmt.Println("started-service")
-
-  /*
-    Following code is for Authentication (Token)
-  */
-  // Instantiate the gorilla/mux router
+  fmt.Println("Started service successfully")
+  // Here we are instantiating the gorilla/mux router
   r := mux.NewRouter()
 
   var jwtMiddleware = jwtmiddleware.New(jwtmiddleware.Options{
@@ -95,10 +98,10 @@ func main() {
     SigningMethod: jwt.SigningMethodHS256,
   })
 
-  r.Handle("/post", jwtMiddleware.Handler(http.HandlerFunc(handlerPost))).Methods("POST")
-  r.Handle("/search", jwtMiddleware.Handler(http.HandlerFunc(handlerSearch))).Methods("GET")
-  r.Handle("/login", http.HandlerFunc(loginHandler)).Methods("POST")
-  r.Handle("/signup", http.HandlerFunc(signupHandler)).Methods("POST")
+  r.Handle("/post", jwtMiddleware.Handler(http.HandlerFunc(handlerPost)))
+  r.Handle("/search", jwtMiddleware.Handler(http.HandlerFunc(handlerSearch)))
+  r.Handle("/login", http.HandlerFunc(loginHandler))
+  r.Handle("/signup", http.HandlerFunc(signupHandler))
 
   http.Handle("/", r)
   log.Fatal(http.ListenAndServe(":8080", nil))
@@ -106,7 +109,6 @@ func main() {
 
 func handlerSearch(w http.ResponseWriter, r *http.Request) {
   fmt.Println("Received one request for search")
-
   w.Header().Set("Access-Control-Allow-Origin", "*")
   w.Header().Set("Content-Type", "application/json")
   w.Header().Set("Access-Control-Allow-Headers", "Content-Type,Authorization")
@@ -123,7 +125,6 @@ func handlerSearch(w http.ResponseWriter, r *http.Request) {
     ran = val + "km"
   }
 
-  // Redis comes in first
   key := r.URL.Query().Get("lat") + ":" + r.URL.Query().Get("lon") + ":" + ran
   if ENABLE_MEMCACHE {
     rs_client := redis.NewClient(&redis.Options{
@@ -142,7 +143,7 @@ func handlerSearch(w http.ResponseWriter, r *http.Request) {
     }
   }
 
-  // Create a client using Elasticsearch
+  // Create a client
   client, err := elastic.NewClient(elastic.SetURL(ES_URL), elastic.SetSniff(false))
   if err != nil {
     http.Error(w, "ES is not setup", http.StatusInternalServerError)
@@ -194,7 +195,6 @@ func handlerSearch(w http.ResponseWriter, r *http.Request) {
     return
   }
 
-  // Write data into cache
   if ENABLE_MEMCACHE {
     rs_client := redis.NewClient(&redis.Options{
       Addr:     REDIS_URL,
@@ -202,18 +202,18 @@ func handlerSearch(w http.ResponseWriter, r *http.Request) {
       DB:       0,  // use default DB
     })
 
-    // Set the cache expiration to be 30 seconds
+    // Set the cache expiration to be 10 seconds
     err := rs_client.Set(key, string(js), time.Second*10).Err()
     if err != nil {
       fmt.Printf("Redis cannot save the key %s as %v.\n", key, err)
     }
+
   }
 
   w.Write(js)
 }
 
 func handlerPost(w http.ResponseWriter, r *http.Request) {
-  // Other codes
   w.Header().Set("Content-Type", "application/json")
   w.Header().Set("Access-Control-Allow-Origin", "*")
   w.Header().Set("Access-Control-Allow-Headers", "Content-Type,Authorization")
@@ -232,7 +232,7 @@ func handlerPost(w http.ResponseWriter, r *http.Request) {
   claims := user.(*jwt.Token).Claims
   username := claims.(jwt.MapClaims)["username"]
 
-  // 32 << 20 is the maxMemory param for ParseMultipartForm, equals to 32MB (1MB = 1024 * 1024 bytes = 2^20 bytes)
+  // 32 << 20 is the maxMemory param for ParseMultipartForm
   // After you call ParseMultipartForm, the file will be saved in the server memory with maxMemory size.
   // If the file size is larger than maxMemory, the rest of the data will be saved in a system temporary file.
   r.ParseMultipartForm(32 << 20)
@@ -242,7 +242,7 @@ func handlerPost(w http.ResponseWriter, r *http.Request) {
   lat, _ := strconv.ParseFloat(r.FormValue("lat"), 64)
   lon, _ := strconv.ParseFloat(r.FormValue("lon"), 64)
   p := &Post{
-    User: username.(string),
+    User:    username.(string),
     Message: r.FormValue("message"),
     Location: Location{
       Lat: lat,
@@ -262,8 +262,7 @@ func handlerPost(w http.ResponseWriter, r *http.Request) {
   ctx := context.Background()
 
   defer file.Close()
-  // replace it with your real bucket name.
-  _, attrs, err := saveToGCS(ctx, file, BUCKET_NAME, id)
+  _, attrs, err := saveToGCS(ctx, file, GCS_BUCKET, id)
   if err != nil {
     http.Error(w, "GCS is not setup", http.StatusInternalServerError)
     fmt.Printf("GCS is not setup %v\n", err)
@@ -277,11 +276,13 @@ func handlerPost(w http.ResponseWriter, r *http.Request) {
   go saveToES(p, id)
 
   // Save to BigTable.
-  //saveToBigTable(p, id)
+  if ENABLE_BIGTABLE {
+    go saveToBigTable(p, id)
+  }
 }
 
-func saveToGCS(ctx context.Context, r io.Reader, bucket, name string) (*storage.ObjectHandle,
-    *storage.ObjectAttrs, error) {
+// Save an image to GCS.
+func saveToGCS(ctx context.Context, r io.Reader, bucket, name string) (*storage.ObjectHandle, *storage.ObjectAttrs, error) {
   client, err := storage.NewClient(ctx)
   if err != nil {
     return nil, nil, err
@@ -289,9 +290,9 @@ func saveToGCS(ctx context.Context, r io.Reader, bucket, name string) (*storage.
   defer client.Close()
 
   bh := client.Bucket(bucket)
-  // Next check if the buck exists
+  // Next check if the bucket exists
   if _, err = bh.Attrs(ctx); err != nil {
-    return nil, nil, err;
+    return nil, nil, err
   }
 
   obj := bh.Object(name)
@@ -303,7 +304,6 @@ func saveToGCS(ctx context.Context, r io.Reader, bucket, name string) (*storage.
     return nil, nil, err
   }
 
-  // Change access control list to make data visible to others
   if err := obj.ACL().Set(ctx, storage.AllUsers, storage.RoleReader); err != nil {
     return nil, nil, err
   }
@@ -313,6 +313,7 @@ func saveToGCS(ctx context.Context, r io.Reader, bucket, name string) (*storage.
   return obj, attrs, err
 }
 
+// Save a post to ElasticSearch
 func saveToES(p *Post, id string) {
   // Create a client
   es_client, err := elastic.NewClient(elastic.SetURL(ES_URL), elastic.SetSniff(false))
@@ -323,12 +324,12 @@ func saveToES(p *Post, id string) {
 
   // Save it to index
   _, err = es_client.Index().
-    Index(INDEX).
-    Type(TYPE).
-    Id(id).
-    BodyJson(p).
-    Refresh(true).
-    Do()
+      Index(INDEX).
+      Type(TYPE).
+      Id(id).
+      BodyJson(p).
+      Refresh(true).
+      Do()
   if err != nil {
     panic(err)
     return
@@ -337,24 +338,27 @@ func saveToES(p *Post, id string) {
   fmt.Printf("Post is saved to Index: %s\n", p.Message)
 }
 
-//func saveToBigTable(p *Post, id string) {
-//  ctx := context.Background()
-//  bt_client, err := bigtable.NewClient(ctx, PROJECT_ID, BT_INSTANCE)
-//  if err != nil {
-//    panic(err)
-//    return
-//  }
-//  tbl := bt_client.Open("post")
-//  mut := bigtable.NewMutation()
-//  t := bigtable.Now()
-//  mut.Set("post", "user", t, []byte(p.User))
-//  mut.Set("post", "message", t, []byte(p.Message))
-//  mut.Set("location", "lat", t, []byte(strconv.FormatFloat(p.Location.Lat, 'f', -1, 64)))
-//  mut.Set("location", "lon", t, []byte(strconv.FormatFloat(p.Location.Lon, 'f', -1, 64)))
-//  err = tbl.Apply(ctx, id, mut)
-//  if err != nil {
-//    panic(err)
-//    return
-//  }
-//  fmt.Printf("Post is saved to BigTable: %s\n", p.Message)
-//}
+// Save a post to BigTable
+func saveToBigTable(p *Post, id string) {
+  ctx := context.Background()
+  bt_client, err := bigtable.NewClient(ctx, BIGTABLE_PROJECT_ID, BT_INSTANCE)
+  if err != nil {
+    panic(err)
+    return
+  }
+
+  tbl := bt_client.Open("post")
+  mut := bigtable.NewMutation()
+  t := bigtable.Now()
+  mut.Set("post", "user", t, []byte(p.User))
+  mut.Set("post", "message", t, []byte(p.Message))
+  mut.Set("location", "lat", t, []byte(strconv.FormatFloat(p.Location.Lat, 'f', -1, 64)))
+  mut.Set("location", "lon", t, []byte(strconv.FormatFloat(p.Location.Lon, 'f', -1, 64)))
+
+  err = tbl.Apply(ctx, id, mut)
+  if err != nil {
+    panic(err)
+    return
+  }
+  fmt.Printf("Post is saved to BigTable: %s\n", p.Message)
+}
