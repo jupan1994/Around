@@ -106,6 +106,10 @@ func main() {
 
 func handlerSearch(w http.ResponseWriter, r *http.Request) {
   fmt.Println("Received one request for search")
+  w.Header().Set("Access-Control-Allow-Origin", "*")
+  w.Header().Set("Content-Type", "application/json")
+  w.Header().Set("Access-Control-Allow-Headers", "Content-Type,Authorization")
+
   lat, _ := strconv.ParseFloat(r.URL.Query().Get("lat"), 64)
   lon, _ := strconv.ParseFloat(r.URL.Query().Get("lon"), 64)
   // range is optional
@@ -128,7 +132,6 @@ func handlerSearch(w http.ResponseWriter, r *http.Request) {
       fmt.Printf("Redis cannot find the key %s as %v.\n", key, err)
     } else {
       fmt.Printf("Redis find the key %s.\n", key)
-      w.Header().Set("Content-Type", "application/json")
       w.Write([]byte(val))
       return
     }
@@ -196,8 +199,6 @@ func handlerSearch(w http.ResponseWriter, r *http.Request) {
     }
   }
 
-  w.Header().Set("Content-Type", "application/json")
-  w.Header().Set("Access-Control-Allow-Origin", "*")
   w.Write(js)
 }
 
